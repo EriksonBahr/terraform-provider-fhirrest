@@ -26,8 +26,11 @@ type FhirResourceDataSource struct {
 
 // FhirResourceDataSourceModel describes the data source data model.
 type FhirResourceDataSourceModel struct {
-	ResourceId types.String `tfsdk:"resource_id"`
-	Resource   types.String `tfsdk:"resource"`
+	ResourceId  types.String `tfsdk:"resource_id"`
+	FhirBaseUrl types.String `tfsdk:"fhir_base_url"`
+
+	// state
+	Resource types.String `tfsdk:"resource"`
 }
 
 func (d *FhirResourceDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -43,6 +46,10 @@ func (d *FhirResourceDataSource) Schema(ctx context.Context, req datasource.Sche
 			"resource_id": schema.StringAttribute{
 				MarkdownDescription: "The id of the fhir resource, example Medication/08146022-932a-4001-9fe4-928382855ddf",
 				Required:            true,
+			},
+			"fhir_base_url": schema.StringAttribute{
+				MarkdownDescription: "The Base URL of the fhir server. Overrides the value set in the provider (if any set)",
+				Optional:            true,
 			},
 			"resource": schema.StringAttribute{
 				MarkdownDescription: "The fhir json as string",
@@ -81,7 +88,7 @@ func (d *FhirResourceDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	body, shouldReturn := ReadFhirResource(d.providerSettings, data.ResourceId.ValueString(), &resp.Diagnostics)
+	body, shouldReturn := ReadFhirResource(d.providerSettings, data.FhirBaseUrl.ValueStringPointer(), data.ResourceId.ValueString(), &resp.Diagnostics)
 	if shouldReturn {
 		return
 	}

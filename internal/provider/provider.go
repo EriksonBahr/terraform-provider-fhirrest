@@ -47,8 +47,8 @@ func (p *FhirRestProvider) Schema(ctx context.Context, req provider.SchemaReques
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"fhir_base_url": schema.StringAttribute{
-				MarkdownDescription: "The Base URL of the fhir server",
-				Required:            true,
+				MarkdownDescription: "The Base URL of the fhir server. When not set it is mandatory to set it on the fhir_resource",
+				Optional:            true,
 			},
 			"default_headers": schema.MapAttribute{
 				ElementType:         basetypes.StringType{},

@@ -19,6 +19,10 @@ This data source is able to read a fhir resource and return it as a json
 
 - `resource_id` (String) The id of the fhir resource, example Medication/08146022-932a-4001-9fe4-928382855ddf
 
+### Optional
+
+- `fhir_base_url` (String) The Base URL of the fhir server. Overrides the value set in the provider (if any set)
+
 ### Read-Only
 
 - `resource` (String) The fhir json as string

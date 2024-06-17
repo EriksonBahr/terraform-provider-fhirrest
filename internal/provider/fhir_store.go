@@ -8,8 +8,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
-func ReadFhirResource(providerSettings *ProviderSettings, resourceId string, diag *diag.Diagnostics) ([]byte, bool) {
-	url := fmt.Sprintf("%s/%s", providerSettings.FhirBaseUrl, resourceId)
+func ReadFhirResource(providerSettings *ProviderSettings, resourceBaseUrl *string, resourceId string, diag *diag.Diagnostics) ([]byte, bool) {
+	baseUrl := providerSettings.FhirBaseUrl
+	if resourceBaseUrl != nil {
+		baseUrl = *resourceBaseUrl
+	}
+	url := fmt.Sprintf("%s/%s", baseUrl, resourceId)
 	getRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		diag.AddError(fmt.Sprintf("could get the resource request using the URL %s", url), err.Error())
@@ -24,7 +28,6 @@ func ReadFhirResource(providerSettings *ProviderSettings, resourceId string, dia
 		diag.AddError(fmt.Sprintf("could not delete the resource using the URL %s", url), err.Error())
 		return nil, true
 	}
-
 	defer getResponse.Body.Close()
 
 	body, _ := io.ReadAll(getResponse.Body)

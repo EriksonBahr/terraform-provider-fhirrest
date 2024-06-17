@@ -21,6 +21,7 @@ This represents a fhir resource in the FHIR server
 
 ### Optional
 
+- `fhir_base_url` (String) The Base URL of the fhir server. Overrides the value set in the provider (if any set)
 - `file_sha256` (String) The sha256 of the file. Not internally used, but useful to trigger updates when the file is updated
 
 ### Read-Only

@@ -39,12 +39,14 @@ type FhirResource struct {
 
 type FhirResourceSettings struct {
 	FhirResourceFilePath string
+	FhirBaseUrl          *string
 }
 
 type FhirResourceModel struct {
 	// from model
-	FilePath   types.String `tfsdk:"file_path"`
-	FileSha256 types.String `tfsdk:"file_sha256"`
+	FilePath    types.String `tfsdk:"file_path"`
+	FileSha256  types.String `tfsdk:"file_sha256"`
+	FhirBaseUrl types.String `tfsdk:"fhir_base_url"`
 
 	//actual state
 	ResourceId     types.String `tfsdk:"resource_id"`
@@ -67,6 +69,10 @@ func (r *FhirResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			},
 			"file_sha256": schema.StringAttribute{
 				MarkdownDescription: "The sha256 of the file. Not internally used, but useful to trigger updates when the file is updated",
+				Optional:            true,
+			},
+			"fhir_base_url": schema.StringAttribute{
+				MarkdownDescription: "The Base URL of the fhir server. Overrides the value set in the provider (if any set)",
 				Optional:            true,
 			},
 			"resource_id": schema.StringAttribute{
@@ -106,7 +112,7 @@ func (r *FhirResource) Create(ctx context.Context, req resource.CreateRequest, r
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 
-	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString()}
+	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -145,11 +151,15 @@ func persistFhirResource(ctx context.Context, fhirResource *FhirResource, resour
 		return nil, nil, nil
 	}
 
-	url := fmt.Sprintf("%s/%s", fhirResource.providerSettings.FhirBaseUrl, resourceTypeStr)
+	baseUrl := fhirResource.providerSettings.FhirBaseUrl
+	if fhirResource.fhirResourceSettings.FhirBaseUrl != nil {
+		baseUrl = *fhirResource.fhirResourceSettings.FhirBaseUrl
+	}
+	url := fmt.Sprintf("%s/%s", baseUrl, resourceTypeStr)
 	requestBody := fileContent
 	requestMethod := "POST"
 	if resourceId != nil {
-		url = fmt.Sprintf("%s/%s", fhirResource.providerSettings.FhirBaseUrl, *resourceId)
+		url = fmt.Sprintf("%s/%s", baseUrl, *resourceId)
 		requestMethod = "PUT"
 		parts := strings.Split(*resourceId, "/")
 		fileContentJson["id"] = parts[len(parts)-1]
@@ -213,7 +223,7 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	body, shouldReturn := ReadFhirResource(r.providerSettings, data.ResourceId.ValueString(), &resp.Diagnostics)
+	body, shouldReturn := ReadFhirResource(r.providerSettings, r.fhirResourceSettings.FhirBaseUrl, data.ResourceId.ValueString(), &resp.Diagnostics)
 	if shouldReturn {
 		return
 	}
