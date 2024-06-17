@@ -223,6 +223,8 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
+
 	body, shouldReturn := ReadFhirResource(r.providerSettings, r.fhirResourceSettings.FhirBaseUrl, data.ResourceId.ValueString(), &resp.Diagnostics)
 	if shouldReturn {
 		return
@@ -256,11 +258,11 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// Read Terraform state data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 
-	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString()}
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
 
 	body, responseJson, resourceType := persistFhirResource(ctx, r, state.ResourceId.ValueStringPointer(), &resp.Diagnostics)
 	if responseJson == nil {
@@ -289,7 +291,14 @@ func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	url := fmt.Sprintf("%s/%s", r.providerSettings.FhirBaseUrl, data.ResourceId.ValueString())
+
+	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
+
+	baseUrl := r.providerSettings.FhirBaseUrl
+	if r.fhirResourceSettings.FhirBaseUrl != nil {
+		baseUrl = *r.fhirResourceSettings.FhirBaseUrl
+	}
+	url := fmt.Sprintf("%s/%s", baseUrl, data.ResourceId.ValueString())
 	deleteRequest, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		resp.Diagnostics.AddError(fmt.Sprintf("could not create the delete request using the URL %s", url), err.Error())
