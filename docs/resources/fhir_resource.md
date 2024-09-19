@@ -23,6 +23,29 @@ This represents a fhir resource in the FHIR server
 
 - `fhir_base_url` (String) The Base URL of the fhir server. Overrides the value set in the provider (if any set)
 - `file_sha256` (String) The sha256 of the file. Not internally used, but useful to trigger updates when the file is updated
+- `substitutions` (Map of String) A map of substitutions to be applied to the file content before sending it to the server.
+				The key is the string to be replaced, and the value is the string to replace it with.
+
+				### Example:
+				Given a FHIR resource file with content:
+
+				{
+					"resourceType": "Questionnaire",
+					"url": "https://system.com/R4/Questionnaire/{{Tenant.GUID}}/DiagnosticTests"
+				}
+
+				And the following substitutions:
+
+				substitutions = {
+					"{{Tenant.GUID}}" = "12345"
+				}
+
+				The final content sent to the server will be:
+
+				{
+					"resourceType": "Questionnaire",
+					"url": "https://system.com/R4/Questionnaire/12345/DiagnosticTests"
+				}
 
 ### Read-Only
 
