@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -40,13 +41,15 @@ type FhirResource struct {
 type FhirResourceSettings struct {
 	FhirResourceFilePath string
 	FhirBaseUrl          *string
+	Substitutions        map[string]string
 }
 
 type FhirResourceModel struct {
 	// from model
-	FilePath    types.String `tfsdk:"file_path"`
-	FileSha256  types.String `tfsdk:"file_sha256"`
-	FhirBaseUrl types.String `tfsdk:"fhir_base_url"`
+	FilePath      types.String `tfsdk:"file_path"`
+	FileSha256    types.String `tfsdk:"file_sha256"`
+	FhirBaseUrl   types.String `tfsdk:"fhir_base_url"`
+	Substitutions types.Map    `tfsdk:"substitutions"`
 
 	//actual state
 	ResourceId     types.String `tfsdk:"resource_id"`
@@ -83,6 +86,33 @@ func (r *FhirResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 				MarkdownDescription: "The sha256 of the response of the fhir server.",
 				Computed:            true,
 			},
+			"substitutions": schema.MapAttribute{
+				ElementType: basetypes.StringType{},
+				MarkdownDescription: `A map of substitutions to be applied to the file content before sending it to the server.
+				The key is the string to be replaced, and the value is the string to replace it with.
+
+				### Example:
+				Given a FHIR resource file with content:
+
+				{
+					"resourceType": "Questionnaire",
+					"url": "https://system.com/R4/Questionnaire/{{Tenant.GUID}}/DiagnosticTests"
+				}
+
+				And the following substitutions:
+
+				substitutions = {
+					"{{Tenant.GUID}}" = "12345"
+				}
+
+				The final content sent to the server will be:
+
+				{
+					"resourceType": "Questionnaire",
+					"url": "https://system.com/R4/Questionnaire/12345/DiagnosticTests"
+				}`,
+				Optional: true,
+			},
 		},
 	}
 }
@@ -112,7 +142,7 @@ func (r *FhirResource) Create(ctx context.Context, req resource.CreateRequest, r
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 
-	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
+	r.fhirResourceSettings = NewFhirResourceSettings(data, ctx)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -138,6 +168,8 @@ func persistFhirResource(ctx context.Context, fhirResource *FhirResource, resour
 	if fileContent == nil {
 		return nil, nil, nil
 	}
+
+	fileContent = replaceValues(fileContent, fhirResource.fhirResourceSettings.Substitutions)
 
 	var fileContentJson map[string]interface{}
 	if err := json.Unmarshal(fileContent, &fileContentJson); err != nil {
@@ -223,7 +255,7 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
+	r.fhirResourceSettings = NewFhirResourceSettings(data, ctx)
 
 	body, shouldReturn := ReadFhirResource(r.providerSettings, r.fhirResourceSettings.FhirBaseUrl, data.ResourceId.ValueString(), &resp.Diagnostics)
 	if shouldReturn {
@@ -262,7 +294,7 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
+	r.fhirResourceSettings = NewFhirResourceSettings(data, ctx)
 
 	body, responseJson, resourceType := persistFhirResource(ctx, r, state.ResourceId.ValueStringPointer(), &resp.Diagnostics)
 	if responseJson == nil {
@@ -277,6 +309,7 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	state.ResponseSha256 = types.StringValue(hashString)
 	state.FilePath = data.FilePath
 	state.FileSha256 = data.FileSha256
+	state.Substitutions = data.Substitutions
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -292,7 +325,7 @@ func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	r.fhirResourceSettings = FhirResourceSettings{FhirResourceFilePath: data.FilePath.ValueString(), FhirBaseUrl: data.FhirBaseUrl.ValueStringPointer()}
+	r.fhirResourceSettings = NewFhirResourceSettings(data, ctx)
 
 	baseUrl := r.providerSettings.FhirBaseUrl
 	if r.fhirResourceSettings.FhirBaseUrl != nil {
@@ -325,4 +358,25 @@ func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 func (r *FhirResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("resource_id"), req, resp)
+}
+
+func NewFhirResourceSettings(data FhirResourceModel, ctx context.Context) FhirResourceSettings {
+	substitutions := make(map[string]string)
+	data.Substitutions.ElementsAs(ctx, &substitutions, true)
+
+	return FhirResourceSettings{
+		FhirResourceFilePath: data.FilePath.ValueString(),
+		FhirBaseUrl:          data.FhirBaseUrl.ValueStringPointer(),
+		Substitutions:        substitutions,
+	}
+}
+
+func replaceValues(content []byte, substitutions map[string]string) []byte {
+	contentStr := string(content)
+
+	for key, value := range substitutions {
+		contentStr = strings.ReplaceAll(contentStr, key, value)
+	}
+
+	return []byte(contentStr)
 }
